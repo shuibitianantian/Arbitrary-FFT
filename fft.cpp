@@ -104,7 +104,7 @@ struct DitFFT {
   }
 };
 
-// Decimation in Time FFT
+// Decimation in Frequency FFT
 // Performs bit-reverse-copy after transform
 // N must be power of 2
 struct DifFFT {
