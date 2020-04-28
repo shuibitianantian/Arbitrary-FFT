@@ -260,6 +260,7 @@ struct BluesteinFFT {
     DitFFT dit;
     DifDitFFT difdit;
   };
+
   BluesteinFFT(std::size_t N) : N(N), pow2(isPow2(N)) {
     if (pow2) {
       new(&dit) DitFFT(N);
@@ -273,10 +274,12 @@ struct BluesteinFFT {
     auto w = Pi / (Real) N;
     for (size_t i = 0; i < N; ++i)
       C[i] = exp(Comp(0, w * (Real) (i * i)));
+    B[0] = C[0];
     for (size_t i = 1; i < N; ++i)
       B[i] = B[difdit.N - i] = C[i];
     difdit.dft(B.data());
   }
+
   ~BluesteinFFT() {
     if (pow2) {
       dit.~DitFFT();
@@ -284,6 +287,7 @@ struct BluesteinFFT {
     }
     difdit.~DifDitFFT();
   }
+
   void dft(Comp* Y, const Comp* X) {
     if (pow2) {
       dit.dft(Y, X);
@@ -300,6 +304,7 @@ struct BluesteinFFT {
     for (size_t i = 0; i < N; ++i)
       Y[i] = A[i] * conj(C[i]);
   }
+
   void idft(Comp* Y, const Comp* X) {
     if (pow2) {
       dit.idft(Y, X);
