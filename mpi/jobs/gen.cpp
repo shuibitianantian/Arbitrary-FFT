@@ -51,7 +51,9 @@ int main() {
       job << "#SBATCH --cpus-per-task=1\n";
       job << "#SBATCH --time=1:00:00\n";
       job << "#SBATCH --mem=8GB\n";
+      job << "#SBATCH --partition=c18_25\n";
       job << "#SBATCH --output=" << name << ".out\n";
+      job << "#SBATCH --error=" << name << ".err\n";
       for (auto sign = 0; sign < 2; ++sign) {
         vector<string> ss;
         for (auto& ver : vers) {
@@ -66,6 +68,7 @@ int main() {
           job << "mpiexec " << ver.exec << ' ' << sign << ' ' << N << ' ';
           job << iname << ' ' << oname << ".dat" << '\n';
           job << "echo ^^^^^^^^^^^^^^^^ " << oname << " ^^^^^^^^^^^^^^^^\n";
+          job << "echo\n";
           ss.emplace_back(move(oname));
         }
         for (auto i = 0; i < ss.size(); ++i)
