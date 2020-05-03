@@ -71,9 +71,11 @@ struct Bluestein {
   const ptrdiff_t lN;
   const ptrdiff_t lM;
   const int L;
-  Comp *const W;
-  Comp *const B;
-  Comp *const C;
+  const int lId;
+  Comp* const W;
+  Comp* const B;
+  Comp* const C;
+  Comp* const Z;
 
   static Bluestein plan(ptrdiff_t N, bool sign, int lId, int np) {
     auto M = ceil2(N + N - 1);
@@ -85,13 +87,14 @@ struct Bluestein {
       lN = 0;
     else if (lOff + lN > N)
       lN = N - lOff;
-    return {sign, N, M, lOff, lN, lM, L};
+    return {sign, N, M, lOff, lN, lM, L, lId};
   }
 
   Bluestein(bool sign, ptrdiff_t N, ptrdiff_t M,
-    ptrdiff_t lOff, ptrdiff_t lN, ptrdiff_t lM, int L) :
-    N(N), M(M), lOff(lOff), lN(lN), lM(lM), L(L),
-    W(alloc<Comp>(L)), B(alloc<Comp>(lM)), C(alloc<Comp>(lN))
+    ptrdiff_t lOff, ptrdiff_t lN, ptrdiff_t lM, int L, int lId) :
+    N(N), M(M), lOff(lOff), lN(lN), lM(lM), L(L), lId(lId),
+    W(alloc<Comp>(L)), B(alloc<Comp>(lM)), C(alloc<Comp>(lN)),
+    Z(alloc<Comp>(lM))
   {
     for (int i = 0; i < L; ++i)
       W[i] = cis(ldexp(_2Pi, -i - 1));
@@ -125,13 +128,14 @@ struct Bluestein {
       B[i] = cis(-w * (Real) (j * j));
     }
 
-    //dft(B);
+    dft(B);
   }
 
   ~Bluestein() {
     free(W);
     free(B);
     free(C);
+    free(Z);
   }
 
   ptrdiff_t getSize(ptrdiff_t& off, ptrdiff_t& n) {
@@ -166,10 +170,34 @@ struct Bluestein {
   }
 
   void dft(Comp* Y) const {
-    for (int i = L - 1; i >= 0; --i) {
+    auto logM = __builtin_ctzll(lM);
+    for (int i = L - 1; i >= logM; --i) {
+      if (!(lOff >> i & 1)) {
+        // lower
+        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
+          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        for (ptrdiff_t k = 0; k < lM; ++k)
+          Y[k] += Z[k];
+      }
+      else {
+        // upper
+        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
+          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto h = (ptrdiff_t) 1 << i;
+        auto wn = W[i];
+        auto w = cis(ldexp(_2Pi, -i - 1) * (lOff & (h - 1)));
+        for (ptrdiff_t k = 0; k < lM; ++k) {
+          Y[k] = w * (Z[k] - Y[k]);
+          w *= wn;
+        }
+      }
+    }
+    for (int i = logM - 1; i >= 0; --i) {
       auto wn = W[i];
-      auto h = ptrdiff_t{1} << i;
-      for (ptrdiff_t j = 0; j < M; j += h << 1) {
+      auto h = (ptrdiff_t) 1 << i;
+      for (ptrdiff_t j = 0; j < lM; j += h << 1) {
         Comp w = (Real) 1;
         for (ptrdiff_t k = 0; k < h; ++k) {
           auto u = Y[j + k];
@@ -183,10 +211,11 @@ struct Bluestein {
   }
 
   void idft(Comp* Y) const {
-    for (int i = 0; i < L; ++i) {
+    auto logM = __builtin_ctzll(lM);
+    for (int i = 0; i < logM; ++i) {
       auto wn = conj(W[i]);
-      auto h = ptrdiff_t{1} << i;
-      for (ptrdiff_t j = 0; j < M; j += h << 1) {
+      auto h = (ptrdiff_t) 1 << i;
+      for (ptrdiff_t j = 0; j < lM; j += h << 1) {
         Comp w = (Real) 1;
         for (ptrdiff_t k = 0; k < h; ++k) {
           auto u = Y[j + k];
@@ -197,7 +226,35 @@ struct Bluestein {
         }
       }
     }
-    for (ptrdiff_t i = 0; i < M; ++i)
+    for (int i = logM; i < L; ++i) {
+      if (!(lOff >> i & 1)) {
+        // lower
+        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
+          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto h = (ptrdiff_t) 1 << i;
+        auto wn = conj(W[i]);
+        auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
+        for (ptrdiff_t k = 0; k < lM; ++k) {
+          Y[k] += w * Z[k];
+          w *= wn;
+        }
+      }
+      else {
+        // upper
+        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
+          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
+          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto h = (ptrdiff_t) 1 << i;
+        auto wn = conj(W[i]);
+        auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
+        for (ptrdiff_t k = 0; k < lM; ++k) {
+          Y[k] = Z[k] - w * Y[k];
+          w *= wn;
+        }
+      }
+    }
+    for (ptrdiff_t i = 0; i < lM; ++i)
       //Y[i] = Y[i].ldexp(-L);
       Y[i] /= (Real) M;
   }
@@ -234,7 +291,7 @@ int main(int nArg, char* args[]) {
 
   auto lMpiOff = MPI_Offset(sizeof(Comp) * lOff);
 
-#if 1
+#if 0
   // START DEBUG OUT: B, C
   printf("%d: good\n", lId);
 
@@ -300,7 +357,7 @@ int main(int nArg, char* args[]) {
   if (sign) {
     // Does not divide the result by N
     auto inv = 1 / (Real) N;
-    for (ptrdiff_t i = 0; i < N; ++i)
+    for (ptrdiff_t i = 0; i < lN; ++i)
       Y[i] *= inv;
   }
 

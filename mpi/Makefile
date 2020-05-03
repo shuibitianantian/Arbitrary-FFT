@@ -6,7 +6,7 @@ TARGETS = $(basename $(wildcard *.cpp))
 
 all: $(TARGETS)
 
-%: %.cpp
+%: %.cpp *.h
 	$(CXX) $(CXXFLAGS) $< $(LIBS) -o $@
 
 clean:

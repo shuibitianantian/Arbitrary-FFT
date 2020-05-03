@@ -73,13 +73,13 @@ struct Bluestein {
       B[i] = B[M - i] = conj(C[i]);
     fill(B + N, B + M - N + 1, Comp{});
 
+    dft(B);
+
     ofstream fb("bb.dat", ios::binary);
     fb.write((char*) B, M * sizeof(Comp));
 
     ofstream fc("bc.dat", ios::binary);
     fc.write((char*) C, N * sizeof(Comp));
-
-    dft(B);
   }
 
   ~Bluestein() {
