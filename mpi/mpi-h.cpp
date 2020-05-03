@@ -376,6 +376,7 @@ int main(int nArg, char* args[]) {
     checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     return EXIT_FAILURE;
   }
+
   checkMpi(MPI_File_close(&fi));
 
   if (!lId)

@@ -1,12 +1,13 @@
 #!/bin/bash
 #
 #SBATCH --job-name=lscpu
-#SBATCH --nodes=2
-#SBATCH --tasks-per-node=2
+#SBATCH --nodes=8
+#SBATCH --tasks-per-node=1
 #SBATCH --cpus-per-task=1
-#SBATCH --time=1:00:00
-#SBATCH --mem=8GB
+#SBATCH --time=00:01:00
+#SBATCH --mem=256MB
 #SBATCH --output=lscpu-%j.out
 
 module load openmpi/gnu/4.0.2
+mpiexec hostname
 mpiexec lscpu

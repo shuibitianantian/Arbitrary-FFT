@@ -111,12 +111,14 @@ int main(int nArg, char* args[]) {
 
   checkMpi(MPI_File_read_at_all(fi, liMpiOff, X, liN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
-  if (iocount != liN) {
+  if (liN && iocount != liN) {
+    // Workaround for FFTW-MPI on Prince: liN=0 -> iocount=non-sense
     fprintf(stderr, "[Rank %d] Failed to load %zd complex numbers at "
       "offset %zd (only got %d)\n", lId, liN, liOff, iocount);
     checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     return EXIT_FAILURE;
   }
+
   checkMpi(MPI_File_close(&fi));
 
   //for (ptrdiff_t i = 0; i < liN; ++i)
@@ -151,12 +153,14 @@ int main(int nArg, char* args[]) {
 
   checkMpi(MPI_File_write_at_all(fo, loMpiOff, Y, loN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
-  if (iocount != loN) {
+  if (loN && iocount != loN) {
+    // Workaround for FFTW-MPI on Prince: loN=0 -> iocount=non-sense
     fprintf(stderr, "[Rank %d] Failed to store %zd complex numbers at "
       "offset %zd (only wrote %d)\n", lId, loN, loOff, iocount);
     checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     return EXIT_FAILURE;
   }
+
   checkMpi(MPI_File_close(&fo));
 
   fftw_free(X);
