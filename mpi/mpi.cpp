@@ -1,23 +1,13 @@
-//#define NDEBUG
-
 #include <algorithm>
-#include <climits>
-#include <complex>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <random>
+#include <cstring>
 #include <utility>
 
 using namespace std;
 
-#include <fftw3.h>
-#include <fftw3-mpi.h>
 #include <mpi.h>
-
-using Real = double;
-using Comp = complex<Real>;
-#define MpiComp MPI_C_DOUBLE_COMPLEX
 
 #define Strify_(s_) # s_
 #define Strify(s_) Strify_(s_)
@@ -34,6 +24,8 @@ void implCheckMpi(int res, long line, const char* expr) {
   exit(EXIT_FAILURE);
 }
 #endif
+
+#include "common.h"
 
 bool checkArgs(bool& sign, ptrdiff_t& N, char*& fnamei, char*& fnameo,
   int nArg, char* args[], int lId)
@@ -60,27 +52,154 @@ bool checkArgs(bool& sign, ptrdiff_t& N, char*& fnamei, char*& fnameo,
   return true;
 }
 
-template<class I>
-constexpr I ceil2(I x) {
-  --x;
-  x |= x >> 1;
-  x |= x >> 2;
-  x |= x >> 4;
-  if (sizeof(I) > 1)
-    x |= x >> 8;
-  if (sizeof(I) > 2)
-    x |= x >> 16;
-  if (sizeof(I) > 4)
-    x |= x >> 32;
-  return x + 1;
+constexpr ptrdiff_t Alignment = 64;
+
+template<class T>
+T* alloc(ptrdiff_t N) {
+  if (auto res = aligned_alloc(Alignment, N * sizeof(T)))
+    return (T*) res;
+  fprintf(stderr, "Allocation of %zu bytes failed\n", N * sizeof(T));
+  exit(EXIT_FAILURE);
 }
 
-struct BluesteinMpi {
-  const ptrdiff_t N, M;
+// Bluestein's Algorithm: Chirp Z-Transform
+// Arbitrary N
+struct Bluestein {
+  const ptrdiff_t N;
+  const ptrdiff_t M;
+  const ptrdiff_t lOff;
+  const ptrdiff_t lN;
+  const ptrdiff_t lM;
   const int L;
-  BluesteinMpi(ptrdiff_t N, bool sign) : N(N), M(ceil2(N + N - 1)),
-    L(__builtin_ctzll(M))
+  Comp *const W;
+  Comp *const B;
+  Comp *const C;
+
+  static Bluestein plan(ptrdiff_t N, bool sign, int lId, int np) {
+    auto M = ceil2(N + N - 1);
+    auto L = __builtin_ctzll(M);
+    auto lM = M / np;
+    auto lN = lM;
+    auto lOff = lM * lId;
+    if (lOff >= N)
+      lN = 0;
+    else if (lOff + lN > N)
+      lN = N - lOff;
+    return {sign, N, M, lOff, lN, lM, L};
+  }
+
+  Bluestein(bool sign, ptrdiff_t N, ptrdiff_t M,
+    ptrdiff_t lOff, ptrdiff_t lN, ptrdiff_t lM, int L) :
+    N(N), M(M), lOff(lOff), lN(lN), lM(lM), L(L),
+    W(alloc<Comp>(L)), B(alloc<Comp>(lM)), C(alloc<Comp>(lN))
   {
+    for (int i = 0; i < L; ++i)
+      W[i] = cis(ldexp(_2Pi, -i - 1));
+
+    auto w = Pi / (Real) N;
+    if (!sign)
+      w = -w;
+
+    auto beg1 = lOff - lOff;
+    auto end1 = min(N, lOff + lN) - lOff;
+    auto beg2 = max(N, lOff) - lOff;
+    auto end2 = min(M - N + 1, lOff + lM) - lOff;
+    auto beg3 = max(M - N + 1, lOff) - lOff;
+    auto end3 = min(M, lOff + lM) - lOff;
+
+    for (auto i = beg1; i < end1; ++i) {
+      auto j = i + lOff;
+      C[i] = cis(w * (Real) (j * j));
+    }
+
+    for (auto i = beg1; i < end1; ++i) {
+      auto j = i + lOff;
+      B[i] = cis(-w * (Real) (j * j));
+    }
+
+    if (beg2 < end2)
+      fill(B + beg2, B + end2, Comp{});
+
+    for (auto i = beg3; i < end3; ++i) {
+      auto j = M - i - lOff;
+      B[i] = cis(-w * (Real) (j * j));
+    }
+
+    //dft(B);
+  }
+
+  ~Bluestein() {
+    free(W);
+    free(B);
+    free(C);
+  }
+
+  ptrdiff_t getSize(ptrdiff_t& off, ptrdiff_t& n) {
+    off = lOff;
+    n = lN;
+    if (off >= N)
+      off = 0;
+    return lM;
+  }
+
+  void transform(Comp* Y) {
+    auto beg1 = lOff - lOff;
+    auto end1 = min(N, lOff + lN) - lOff;
+    auto beg2 = max(N, lOff) - lOff;
+    auto end2 = min(M, lOff + lM) - lOff;
+
+    for (ptrdiff_t i = beg1; i < end1; ++i)
+      Y[i] *= C[i];
+
+    if (beg2 < end2)
+      fill(Y + beg2, Y + end2, Comp{});
+
+    dft(Y);
+
+    for (ptrdiff_t i = 0; i < lM; ++i)
+      Y[i] *= B[i];
+
+    idft(Y);
+
+    for (ptrdiff_t i = beg1; i < end1; ++i)
+      Y[i] *= C[i];
+  }
+
+  void dft(Comp* Y) const {
+    for (int i = L - 1; i >= 0; --i) {
+      auto wn = W[i];
+      auto h = ptrdiff_t{1} << i;
+      for (ptrdiff_t j = 0; j < M; j += h << 1) {
+        Comp w = (Real) 1;
+        for (ptrdiff_t k = 0; k < h; ++k) {
+          auto u = Y[j + k];
+          auto v = Y[j + k + h];
+          Y[j + k] = u + v;
+          Y[j + k + h] = w * (u - v);
+          w *= wn;
+        }
+      }
+    }
+  }
+
+  void idft(Comp* Y) const {
+    for (int i = 0; i < L; ++i) {
+      auto wn = conj(W[i]);
+      auto h = ptrdiff_t{1} << i;
+      for (ptrdiff_t j = 0; j < M; j += h << 1) {
+        Comp w = (Real) 1;
+        for (ptrdiff_t k = 0; k < h; ++k) {
+          auto u = Y[j + k];
+          auto v = w * Y[j + k + h];
+          Y[j + k] = u + v;
+          Y[j + k + h] = u - v;;
+          w *= wn;
+        }
+      }
+    }
+    for (ptrdiff_t i = 0; i < M; ++i)
+      //Y[i] = Y[i].ldexp(-L);
+      Y[i] /= (Real) M;
   }
 };
 
@@ -109,34 +228,63 @@ int main(int nArg, char* args[]) {
   checkMpi(MPI_File_open(MPI_COMM_WORLD, fnameo,
     MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &fo));
 
+  auto fft = Bluestein::plan(N, sign, lId, np);
+  ptrdiff_t lOff, lN;
+  auto lM = fft.getSize(lOff, lN);
 
-  fftw_mpi_init();
+  auto lMpiOff = MPI_Offset(sizeof(Comp) * lOff);
 
-  ptrdiff_t liN, liOff, loN, loOff;
-  auto lN = fftw_mpi_local_size_1d(N, MPI_COMM_WORLD, sign, 0,
-    &liN, &liOff, &loN, &loOff);
+#if 1
+  // START DEBUG OUT: B, C
+  printf("%d: good\n", lId);
 
-  auto liMpiOff = MPI_Offset(sizeof(Comp) * liOff);
-  auto loMpiOff = MPI_Offset(sizeof(Comp) * loOff);
+  auto fMpiOff = MPI_Offset(sizeof(Comp) * fft.lOff);
 
-  auto X = fftw_alloc_complex(lN);
-  auto Y = fftw_alloc_complex(lN);
+  MPI_File fb, fc;
+  checkMpi(MPI_File_open(MPI_COMM_WORLD, "mb.dat",
+    MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &fb));
+  checkMpi(MPI_File_open(MPI_COMM_WORLD, "mc.dat",
+    MPI_MODE_WRONLY | MPI_MODE_CREATE, MPI_INFO_NULL, &fc));
 
-  if (!lId)
-    printf("[Root] Start planning...\n");
-  auto plan = fftw_mpi_plan_dft_1d(N, X, Y, MPI_COMM_WORLD, sign,
-    FFTW_ESTIMATE);
+  checkMpi(MPI_File_write_at_all(fb, fMpiOff, fft.B, fft.lM, MpiComp, &iostat));
+  checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
+  if (iocount != fft.lM) {
+    fprintf(stderr, "[Rank %d] Failed to store %zd complex numbers at "
+      "offset %zd (only wrote %d)\n", lId, fft.lM, fft.lOff, iocount);
+    checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
+    return EXIT_FAILURE;
+  }
+  checkMpi(MPI_File_close(&fb));
+
+  printf("%d: good bo\n", lId);
+
+  checkMpi(MPI_File_write_at_all(fc, lMpiOff, fft.C, lN, MpiComp, &iostat));
+  checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
+  if (iocount != lN) {
+    fprintf(stderr, "[Rank %d] Failed to store %zd complex numbers at "
+      "offset %zd (only wrote %d)\n", lId, lN, lOff, iocount);
+    checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
+    return EXIT_FAILURE;
+  }
+  checkMpi(MPI_File_close(&fc));
+
+  printf("%d: good co\n", lId);
+
+  checkMpi(MPI_Finalize());
+  return EXIT_SUCCESS;
+  // END DEBUG OUT: B, C
+#endif
+
+  auto Y = alloc<Comp>(lM);
 
   if (!lId)
     printf("[Root] Start loading data...\n");
 
-  //printf("[Rank %d] lN=%zd liOff=%zd liN=%zd\n", lId, lN, liOff, liN);
-
-  checkMpi(MPI_File_read_at_all(fi, liMpiOff, X, liN, MpiComp, &iostat));
+  checkMpi(MPI_File_read_at_all(fi, lMpiOff, Y, lN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
-  if (iocount != liN) {
+  if (iocount != fft.lN) {
     fprintf(stderr, "[Rank %d] Failed to load %zd complex numbers at "
-      "offset %zd (only got %d)\n", lId, liN, liOff, iocount);
+      "offset %zd (only got %d)\n", lId, lN, lOff, iocount);
     checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     return EXIT_FAILURE;
   }
@@ -148,7 +296,13 @@ int main(int nArg, char* args[]) {
   checkMpi(MPI_Barrier(MPI_COMM_WORLD));
   auto tStart = MPI_Wtime();
 
-  fftw_execute(plan);
+  fft.transform(Y);
+  if (sign) {
+    // Does not divide the result by N
+    auto inv = 1 / (Real) N;
+    for (ptrdiff_t i = 0; i < N; ++i)
+      Y[i] *= inv;
+  }
 
   checkMpi(MPI_Barrier(MPI_COMM_WORLD));
   auto tEnd = MPI_Wtime();
@@ -160,18 +314,16 @@ int main(int nArg, char* args[]) {
     printf("[Root] Start saving data...\n");
   }
 
-  checkMpi(MPI_File_write_at_all(fo, loMpiOff, Y, loN, MpiComp, &iostat));
+  checkMpi(MPI_File_write_at_all(fo, lMpiOff, Y, lN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
-  if (iocount != loN) {
+  if (iocount != lN) {
     fprintf(stderr, "[Rank %d] Failed to store %zd complex numbers at "
-      "offset %zd (only wrote %d)\n", lId, loN, loOff, iocount);
+      "offset %zd (only wrote %d)\n", lId, lN, lOff, iocount);
     checkMpi(MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE));
     return EXIT_FAILURE;
   }
-  checkMpi(MPI_File_close(&fo));
 
-  fftw_free(X);
-  fftw_free(Y);
+  checkMpi(MPI_File_close(&fo));
 
   if (!lId)
     printf("[Root] All done\n");
