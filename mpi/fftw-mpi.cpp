@@ -1,8 +1,7 @@
-//#define NDEBUG
+#define NDEBUG
 
 #include <algorithm>
 #include <climits>
-#include <complex>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -14,10 +13,6 @@ using namespace std;
 #include <fftw3.h>
 #include <fftw3-mpi.h>
 #include <mpi.h>
-
-using Real = double;
-using Comp = complex<Real>;
-#define MpiComp MPI_C_DOUBLE_COMPLEX
 
 #define Strify_(s_) # s_
 #define Strify(s_) Strify_(s_)
@@ -34,6 +29,8 @@ void implCheckMpi(int res, long line, const char* expr) {
   exit(EXIT_FAILURE);
 }
 #endif
+
+#include "common.h"
 
 bool checkArgs(bool& sign, ptrdiff_t& N, char*& fnamei, char*& fnameo,
   int nArg, char* args[], int lId)

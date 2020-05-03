@@ -1,3 +1,5 @@
+//#define NDEBUG
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -73,8 +75,10 @@ struct Bluestein {
   const int L;
   const int lId;
   Comp* const W;
-  Comp* const B;
   Comp* const C;
+  Comp* B;
+  Comp* X;
+  Comp* Y;
   Comp* const Z;
 
   static Bluestein plan(ptrdiff_t N, bool sign, int lId, int np) {
@@ -90,11 +94,11 @@ struct Bluestein {
     return {sign, N, M, lOff, lN, lM, L, lId};
   }
 
-  Bluestein(bool sign, ptrdiff_t N, ptrdiff_t M,
-    ptrdiff_t lOff, ptrdiff_t lN, ptrdiff_t lM, int L, int lId) :
+  Bluestein(bool sign, ptrdiff_t N, ptrdiff_t M, ptrdiff_t lOff,
+    ptrdiff_t lN, ptrdiff_t lM, int L, int lId) :
     N(N), M(M), lOff(lOff), lN(lN), lM(lM), L(L), lId(lId),
-    W(alloc<Comp>(L)), B(alloc<Comp>(lM)), C(alloc<Comp>(lN)),
-    Z(alloc<Comp>(lM))
+    W(alloc<Comp>(L)), C(alloc<Comp>(lN)), B(alloc<Comp>(lM)),
+    X(alloc<Comp>(lM)), Y(alloc<Comp>(lM)), Z(alloc<Comp>(lM))
   {
     for (int i = 0; i < L; ++i)
       W[i] = cis(ldexp(_2Pi, -i - 1));
@@ -117,18 +121,19 @@ struct Bluestein {
 
     for (auto i = beg1; i < end1; ++i) {
       auto j = i + lOff;
-      B[i] = cis(-w * (Real) (j * j));
+      Y[i] = cis(-w * (Real) (j * j));
     }
 
     if (beg2 < end2)
-      fill(B + beg2, B + end2, Comp{});
+      fill(Y + beg2, Y + end2, Comp{});
 
     for (auto i = beg3; i < end3; ++i) {
       auto j = M - i - lOff;
-      B[i] = cis(-w * (Real) (j * j));
+      Y[i] = cis(-w * (Real) (j * j));
     }
 
-    dft(B);
+    dft();
+    swap(B, Y);
   }
 
   ~Bluestein() {
@@ -146,7 +151,7 @@ struct Bluestein {
     return lM;
   }
 
-  void transform(Comp* Y) {
+  void transform() {
     auto beg1 = lOff - lOff;
     auto end1 = min(N, lOff + lN) - lOff;
     auto beg2 = max(N, lOff) - lOff;
@@ -158,40 +163,62 @@ struct Bluestein {
     if (beg2 < end2)
       fill(Y + beg2, Y + end2, Comp{});
 
-    dft(Y);
+    dft();
 
     for (ptrdiff_t i = 0; i < lM; ++i)
       Y[i] *= B[i];
 
-    idft(Y);
+    idft();
 
     for (ptrdiff_t i = beg1; i < end1; ++i)
       Y[i] *= C[i];
   }
 
-  void dft(Comp* Y) const {
+  void dft() {
+    MPI_Request rqRecv, rqSend;
     auto logM = __builtin_ctzll(lM);
     for (int i = L - 1; i >= logM; --i) {
       if (!(lOff >> i & 1)) {
-        // lower
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-        for (ptrdiff_t k = 0; k < lM; ++k)
-          Y[k] += Z[k];
+        auto peer = lId + (1 << (i - logM));
+        checkMpi(MPI_Irecv(Z, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqRecv));
+        checkMpi(MPI_Isend(Y, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqSend));
+        checkMpi(MPI_Wait(&rqRecv, MPI_STATUS_IGNORE));
+        for (auto k = 0; k < lM; ++k)
+          X[k] = Y[k] + Z[k];
+        swap(X, Y);
+        checkMpi(MPI_Wait(&rqSend, MPI_STATUS_IGNORE));
+        //// lower
+        //checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
+        //  Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
+        //  MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        //for (ptrdiff_t k = 0; k < lM; ++k)
+        //  Y[k] += Z[k];
       }
       else {
-        // upper
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId - (1 << (i - logM));
+        checkMpi(MPI_Irecv(Z, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqRecv));
+        checkMpi(MPI_Isend(Y, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqSend));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = W[i];
         auto w = cis(ldexp(_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] = w * (Z[k] - Y[k]);
+        checkMpi(MPI_Wait(&rqRecv, MPI_STATUS_IGNORE));
+        for (auto k = 0; k < lM; ++k) {
+          X[k] = w * (Y[k] - Z[k]);
           w *= wn;
         }
+        swap(X, Y);
+        checkMpi(MPI_Wait(&rqSend, MPI_STATUS_IGNORE));
+        //// upper
+        //checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
+        //  Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
+        //  MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        //auto h = (ptrdiff_t) 1 << i;
+        //auto wn = W[i];
+        //auto w = cis(ldexp(_2Pi, -i - 1) * (lOff & (h - 1)));
+        //for (ptrdiff_t k = 0; k < lM; ++k) {
+        //  Y[k] = w * (Z[k] - Y[k]);
+        //  w *= wn;
+        //}
       }
     }
     for (int i = logM - 1; i >= 0; --i) {
@@ -210,7 +237,7 @@ struct Bluestein {
     }
   }
 
-  void idft(Comp* Y) const {
+  void idft() {
     auto logM = __builtin_ctzll(lM);
     for (int i = 0; i < logM; ++i) {
       auto wn = conj(W[i]);
@@ -226,32 +253,59 @@ struct Bluestein {
         }
       }
     }
+    MPI_Request rqRecv, rqSend;
     for (int i = logM; i < L; ++i) {
       if (!(lOff >> i & 1)) {
-        // lower
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId + (1 << (i - logM));
+        checkMpi(MPI_Irecv(Z, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqRecv));
+        checkMpi(MPI_Isend(Y, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqSend));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = conj(W[i]);
         auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] += w * Z[k];
+        checkMpi(MPI_Wait(&rqRecv, MPI_STATUS_IGNORE));
+        for (auto k = 0; k < lM; ++k) {
+          X[k] = Y[k] + w * Z[k];
           w *= wn;
         }
+        swap(X, Y);
+        checkMpi(MPI_Wait(&rqSend, MPI_STATUS_IGNORE));
+        //// lower
+        //checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
+        //  Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
+        //  MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        //auto h = (ptrdiff_t) 1 << i;
+        //auto wn = conj(W[i]);
+        //auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
+        //for (ptrdiff_t k = 0; k < lM; ++k) {
+        //  Y[k] += w * Z[k];
+        //  w *= wn;
+        //}
       }
       else {
-        // upper
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId - (1 << (i - logM));
+        checkMpi(MPI_Irecv(Z, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqRecv));
+        checkMpi(MPI_Isend(Y, lM, MpiComp, peer, 0, MPI_COMM_WORLD, &rqSend));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = conj(W[i]);
         auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] = Z[k] - w * Y[k];
+        checkMpi(MPI_Wait(&rqRecv, MPI_STATUS_IGNORE));
+        for (auto k = 0; k < lM; ++k) {
+          X[k] = Z[k] - w * Y[k];
           w *= wn;
         }
+        swap(X, Y);
+        checkMpi(MPI_Wait(&rqSend, MPI_STATUS_IGNORE));
+        //// upper
+        //checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
+        //  Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
+        //  MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        //auto h = (ptrdiff_t) 1 << i;
+        //auto wn = conj(W[i]);
+        //auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
+        //for (ptrdiff_t k = 0; k < lM; ++k) {
+        //  Y[k] = Z[k] - w * Y[k];
+        //  w *= wn;
+        //}
       }
     }
     for (ptrdiff_t i = 0; i < lM; ++i)
@@ -334,12 +388,10 @@ int main(int nArg, char* args[]) {
   // END DEBUG OUT: B, C
 #endif
 
-  auto Y = alloc<Comp>(lM);
-
   if (!lId)
     printf("[Root] Start loading data...\n");
 
-  checkMpi(MPI_File_read_at_all(fi, lMpiOff, Y, lN, MpiComp, &iostat));
+  checkMpi(MPI_File_read_at_all(fi, lMpiOff, fft.Y, lN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
   if (iocount != fft.lN) {
     fprintf(stderr, "[Rank %d] Failed to load %zd complex numbers at "
@@ -355,12 +407,12 @@ int main(int nArg, char* args[]) {
   checkMpi(MPI_Barrier(MPI_COMM_WORLD));
   auto tStart = MPI_Wtime();
 
-  fft.transform(Y);
+  fft.transform();
   if (sign) {
     // Does not divide the result by N
     auto inv = 1 / (Real) N;
     for (ptrdiff_t i = 0; i < lN; ++i)
-      Y[i] *= inv;
+      fft.Y[i] *= inv;
   }
 
   checkMpi(MPI_Barrier(MPI_COMM_WORLD));
@@ -373,7 +425,7 @@ int main(int nArg, char* args[]) {
     printf("[Root] Start saving data...\n");
   }
 
-  checkMpi(MPI_File_write_at_all(fo, lMpiOff, Y, lN, MpiComp, &iostat));
+  checkMpi(MPI_File_write_at_all(fo, lMpiOff, fft.Y, lN, MpiComp, &iostat));
   checkMpi(MPI_Get_count(&iostat, MpiComp, &iocount));
   if (iocount != lN) {
     fprintf(stderr, "[Rank %d] Failed to store %zd complex numbers at "

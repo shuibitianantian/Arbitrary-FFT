@@ -1,3 +1,5 @@
+#define NDEBUG
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -94,7 +96,7 @@ struct Bluestein {
     ptrdiff_t lOff, ptrdiff_t lN, ptrdiff_t lM, int L, int lId) :
     N(N), M(M), lOff(lOff), lN(lN), lM(lM), L(L), lId(lId),
     W(alloc<Comp>(L)), B(alloc<Comp>(lM)), C(alloc<Comp>(lN)),
-    Z(alloc<Comp>(lM))
+    Z(alloc<Comp>(lM >> 1))
   {
     for (int i = 0; i < L; ++i)
       W[i] = cis(ldexp(_2Pi, -i - 1));
@@ -170,28 +172,44 @@ struct Bluestein {
   }
 
   void dft(Comp* Y) const {
+    auto K = lM >> 1;
     auto logM = __builtin_ctzll(lM);
     for (int i = L - 1; i >= logM; --i) {
       if (!(lOff >> i & 1)) {
         // lower
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
-        for (ptrdiff_t k = 0; k < lM; ++k)
-          Y[k] += Z[k];
-      }
-      else {
-        // upper
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId + (1 << (i - logM));
+        checkMpi(MPI_Sendrecv(Y + K, K, MpiComp, peer, 0,
+          Z, K, MpiComp, peer, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = W[i];
         auto w = cis(ldexp(_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] = w * (Z[k] - Y[k]);
+        for (ptrdiff_t k = 0; k < K; ++k) {
+          auto u = Y[k];
+          auto v = Z[k];
+          Y[k] = u + v;
+          Z[k] = w * (u - v);
           w *= wn;
         }
+        checkMpi(MPI_Sendrecv(Z, K, MpiComp, peer, 1,
+          Y + K, K, MpiComp, peer, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+      }
+      else {
+        // upper
+        auto peer = lId - (1 << (i - logM));
+        checkMpi(MPI_Sendrecv(Y, K, MpiComp, peer, 0,
+          Z, K, MpiComp, peer, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto h = (ptrdiff_t) 1 << i;
+        auto wn = W[i];
+        auto w = cis(ldexp(_2Pi, -i - 1) * ((lOff & (h - 1)) + K));
+        for (ptrdiff_t k = 0; k < K; ++k) {
+          auto u = Z[k];
+          auto v = Y[k + K];
+          Z[k] = u + v;
+          Y[k + K] = w * (u - v);
+          w *= wn;
+        }
+        checkMpi(MPI_Sendrecv(Z, K, MpiComp, peer, 1,
+          Y, K, MpiComp, peer, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
       }
     }
     for (int i = logM - 1; i >= 0; --i) {
@@ -211,6 +229,7 @@ struct Bluestein {
   }
 
   void idft(Comp* Y) const {
+    auto K = lM >> 1;
     auto logM = __builtin_ctzll(lM);
     for (int i = 0; i < logM; ++i) {
       auto wn = conj(W[i]);
@@ -229,29 +248,39 @@ struct Bluestein {
     for (int i = logM; i < L; ++i) {
       if (!(lOff >> i & 1)) {
         // lower
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId + (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId + (1 << (i - logM));
+        checkMpi(MPI_Sendrecv(Y + K, K, MpiComp, peer, 0,
+          Z, K, MpiComp, peer, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = conj(W[i]);
         auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] += w * Z[k];
+        for (ptrdiff_t k = 0; k < K; ++k) {
+          auto u = Y[k];
+          auto v = w * Z[k];
+          Y[k] = u + v;
+          Z[k] = u - v;
           w *= wn;
         }
+        checkMpi(MPI_Sendrecv(Z, K, MpiComp, peer, 1,
+          Y + K, K, MpiComp, peer, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
       }
       else {
         // upper
-        checkMpi(MPI_Sendrecv(Y, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          Z, lM, MpiComp, lId - (1 << (i - logM)), 0,
-          MPI_COMM_WORLD, MPI_STATUS_IGNORE));
+        auto peer = lId - (1 << (i - logM));
+        checkMpi(MPI_Sendrecv(Y, K, MpiComp, peer, 0,
+          Z, K, MpiComp, peer, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
         auto h = (ptrdiff_t) 1 << i;
         auto wn = conj(W[i]);
-        auto w = cis(ldexp(-_2Pi, -i - 1) * (lOff & (h - 1)));
-        for (ptrdiff_t k = 0; k < lM; ++k) {
-          Y[k] = Z[k] - w * Y[k];
+        auto w = cis(ldexp(-_2Pi, -i - 1) * ((lOff & (h - 1)) + K));
+        for (ptrdiff_t k = 0; k < K; ++k) {
+          auto u = Z[k];
+          auto v = w * Y[k + K];
+          Z[k] = u + v;
+          Y[k + K] = u - v;
           w *= wn;
         }
+        checkMpi(MPI_Sendrecv(Z, K, MpiComp, peer, 1,
+          Y, K, MpiComp, peer, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
       }
     }
     for (ptrdiff_t i = 0; i < lM; ++i)
