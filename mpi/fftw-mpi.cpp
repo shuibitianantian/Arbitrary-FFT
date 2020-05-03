@@ -30,7 +30,10 @@ void implCheckMpi(int res, long line, const char* expr) {
 }
 #endif
 
-#include "common.h"
+using Real = double;
+using Comp = fftw_complex;
+#define MpiReal MPI_DOUBLE_PRECISION
+#define MpiComp MPI_C_DOUBLE_COMPLEX
 
 bool checkArgs(bool& sign, ptrdiff_t& N, char*& fnamei, char*& fnameo,
   int nArg, char* args[], int lId)
