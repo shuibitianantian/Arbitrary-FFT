@@ -1,5 +1,5 @@
 #include "utils.cuh"
-
+#include <stdio.h>
 // self defined complex exponential cuda
 __device__ cuDoubleComplex cuda_complex_exp (cuDoubleComplex arg){
     double s, c;
@@ -127,9 +127,10 @@ __global__ void ditfft_kernel(cuDoubleComplex* Y, cuDoubleComplex* W, std::size_
 }
 
 __global__ void ditdiffft_kernel(cuDoubleComplex* Y, cuDoubleComplex* W, std::size_t iter, std::size_t N){
+
   std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
   std::size_t idy = threadIdx.y + blockIdx.y*blockDim.y;
-
+  
   auto g = N >> (iter + 1);
   auto h = size_t{1} << iter;
   auto j = 2*h*idx;
@@ -142,6 +143,7 @@ __global__ void ditdiffft_kernel(cuDoubleComplex* Y, cuDoubleComplex* W, std::si
       Y[j + k] = cuCadd(u, v);
       Y[j + k + h] = cuCmul(cuConj(W[k * g]), cuCsub(u, v));
   }
+
 }
 
 __global__ void ditdifidft_kernel(cuDoubleComplex* Y, cuDoubleComplex* W, std::size_t iter, std::size_t N){
@@ -196,7 +198,7 @@ __global__ void complex_mul_conj_kernel(cuDoubleComplex* A, cuDoubleComplex* X, 
   if(idx < N){
     A[idx] = cuCmul(X[idx], cuConj(C[idx]));
   }else if(idx < Nl){
-    A[idx] = make_cuDoubleComplex(0.0, 0.0);
+    A[idx] = {};
   }
 
 }
@@ -207,19 +209,12 @@ __global__ void complex_mul_kernel(cuDoubleComplex* A, cuDoubleComplex* X, cuDou
   if(idx < N){
     A[idx] = cuCmul(X[idx], C[idx]);
   }else if(idx < Nl){
-    A[idx] = make_cuDoubleComplex(0., 0.);
+    A[idx] = {};
   }
 
 }
 
-__global__ void complex_mul_avg_kernel(cuDoubleComplex* Y, cuDoubleComplex* A, cuDoubleComplex* C, std::size_t N){
-  std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
 
-  if(idx < N){
-    Y[idx] = cuCdiv(cuCmul(A[idx], C[idx]) , make_cuDoubleComplex(N, 0.));
-  }
-
-}
 
 __global__ void complex_self_mul_kernel(cuDoubleComplex* A, cuDoubleComplex* B, std::size_t N){
   std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -244,5 +239,31 @@ __global__ void complex_div_real(cuDoubleComplex* Y, std::size_t N){
   
   if(idx < N){
     Y[idx] = cuCdiv(Y[idx], make_cuDoubleComplex(N, 0.0));
+  }
+}
+
+__global__ void complex_div_real_mul(cuDoubleComplex* A, cuDoubleComplex* Y, cuDoubleComplex* C, std::size_t N, std::size_t Nl){
+  std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
+  
+  if(idx < N){
+    A[idx] = cuCdiv(A[idx], make_cuDoubleComplex(N, 0.0));
+  }
+
+  __syncthreads();
+  if(idx < Nl){
+    Y[idx] = cuCdiv(cuCmul(A[idx], C[idx]) , make_cuDoubleComplex(Nl, 0.));
+  }
+}
+
+__global__ void complex_div_real_mul_conj(cuDoubleComplex* A, cuDoubleComplex* Y, cuDoubleComplex* C, std::size_t N, std::size_t Nl){
+  std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
+  
+  if(idx < N){
+    A[idx] = cuCdiv(A[idx], make_cuDoubleComplex(N, 0.0));
+  }
+
+  __syncthreads();
+  if(idx < Nl){
+    Y[idx] = cuCmul(A[idx], cuConj(C[idx]));
   }
 }
