@@ -14,16 +14,17 @@
 #include "device_launch_parameters.h"
 
 #define pi 3.1415926535
-#define LENGTH 1024*1024*16 //signal sampling points
+// #define LENGTH 1024*1024 //signal sampling points
 
 std::mt19937_64 R(std::random_device{}());
 double randReal(double lo, double up) {
     return std::uniform_real_distribution<double>(lo, up)(R);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
     // data gen
+    int LENGTH = atoi(argv[1]);
     double* Data = (double*) malloc(LENGTH*sizeof(double));
     for(int i = 0; i < LENGTH; ++i){
         Data[i] = randReal(-100, 100);
@@ -31,10 +32,6 @@ int main()
     
     double fs = 1000000.000;//sampling frequency
     double f0 = 200000.00;// signal frequency
-    // for (int i = 0; i < LENGTH; i++)
-    // {
-    //     Data[i] = 1.35*cos(2 * pi*f0*i / fs);//signal gen,
-    // }
 
     cufftComplex *CompData = (cufftComplex*)malloc(LENGTH * sizeof(cufftComplex));//allocate memory for the data in host
     int i;
@@ -56,12 +53,7 @@ int main()
     cudaMemcpy(CompData, d_fftData, LENGTH * sizeof(cufftComplex), cudaMemcpyDeviceToHost);// copy the result from device to host
 
     std::cout << omp_get_wtime() - tt << std::endl;
-    // for (i = 0; i < LENGTH / 2; i++)
-    // {
-    //     printf("i=%d\tf= %6.1fHz\tRealAmp=%3.1f\t", i, fs*i / LENGTH, CompData[i].x*2.0 / LENGTH);
-    //     printf("ImagAmp=+%3.1fi", CompData[i].y*2.0 / LENGTH);
-    //     printf("\n");
-    // }
+
     cufftDestroy(plan);
     free(CompData);
     cudaFree(d_fftData);
