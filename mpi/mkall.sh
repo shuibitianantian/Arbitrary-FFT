@@ -12,8 +12,8 @@ make fftw-mpi
 module purge
 module load gcc/9.1.0
 module load openmpi/gnu/3.1.4
-#export MARCH="-march=broadwell -mtune=broadwell"
-export MARCH="-march=haswell -mtune=haswell"
+export MARCH="-march=broadwell -mtune=broadwell"
+#export MARCH="-march=haswell -mtune=haswell"
 export CXXFLAGS=
 export LDFLAGS=
 make all

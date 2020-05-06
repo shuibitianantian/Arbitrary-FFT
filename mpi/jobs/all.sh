@@ -5,6 +5,8 @@ sbatch n10000000-np8.sh
 sbatch n10000000-np16.sh
 sbatch n10000000-np32.sh
 sbatch n10000000-np64.sh
+sbatch n10000000-np128.sh
+sbatch n10000000-np256.sh
 sbatch n10000019-np1.sh
 sbatch n10000019-np2.sh
 sbatch n10000019-np4.sh
@@ -12,3 +14,5 @@ sbatch n10000019-np8.sh
 sbatch n10000019-np16.sh
 sbatch n10000019-np32.sh
 sbatch n10000019-np64.sh
+sbatch n10000019-np128.sh
+sbatch n10000019-np256.sh

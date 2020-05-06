@@ -1,0 +1,46 @@
+vvvvvvvvvvvvvvvv /scratch/zl2972/n10000019-np128-fftw-s0.dat vvvvvvvvvvvvvvvv
+[Root] Start planning...
+[Root] Start loading data...
+[Root] FFT starts
+[Root] FFT Ends
+[Root] Time: 2.940914 s
+[Root] Start saving data...
+[Root] All done
+^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000019-np128-fftw-s0.dat ^^^^^^^^^^^^^^^^
+
+vvvvvvvvvvvvvvvv /scratch/zl2972/n10000019-np128-mpih-s0.dat vvvvvvvvvvvvvvvv
+[Root] Start planning...
+[Root] Start loading data...
+[Root] FFT starts
+[Root] FFT Ends
+[Root] Time: 0.150663 s
+[Root] Start saving data...
+[Root] All done
+^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000019-np128-mpih-s0.dat ^^^^^^^^^^^^^^^^
+
+======== CMP /scratch/zl2972/n10000019-np128-fftw-s0.dat /scratch/zl2972/n10000019-np128-mpih-s0.dat ========
+Error: 0.00555368
+
+vvvvvvvvvvvvvvvv /scratch/zl2972/n10000019-np128-fftw-s1.dat vvvvvvvvvvvvvvvv
+[Root] Start planning...
+[Root] Start loading data...
+[Root] FFT starts
+[Root] FFT Ends
+[Root] Time: 3.005660 s
+[Root] Start saving data...
+[Root] All done
+^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000019-np128-fftw-s1.dat ^^^^^^^^^^^^^^^^
+
+vvvvvvvvvvvvvvvv /scratch/zl2972/n10000019-np128-mpih-s1.dat vvvvvvvvvvvvvvvv
+[Root] Start planning...
+[Root] Start loading data...
+[Root] FFT starts
+[Root] FFT Ends
+[Root] Time: 0.151743 s
+[Root] Start saving data...
+[Root] All done
+^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000019-np128-mpih-s1.dat ^^^^^^^^^^^^^^^^
+
+======== CMP /scratch/zl2972/n10000019-np128-fftw-s1.dat /scratch/zl2972/n10000019-np128-mpih-s1.dat ========
+Error: 4.98573e-10
+

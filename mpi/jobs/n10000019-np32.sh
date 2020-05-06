@@ -1,12 +1,12 @@
 #!/bin/bash
 #
 #SBATCH --job-name=n10000019-np32
-#SBATCH --nodes=4
-#SBATCH --tasks-per-node=8
+#SBATCH --nodes=2
+#SBATCH --tasks-per-node=16
 #SBATCH --cpus-per-task=1
-#SBATCH --time=00:10:00
+#SBATCH --time=00:20:00
 #SBATCH --mem=8GB
-#SBATCH --partition=c26
+#SBATCH --partition=c01_17
 #SBATCH --output=n10000019-np32.out
 
 module purge

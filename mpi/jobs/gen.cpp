@@ -26,8 +26,8 @@ constexpr ptrdiff_t Ns[]{
   //100000000, 100000007,
 };
 
-constexpr int nTaskPerNode = 8;
-constexpr int nNode = 8;
+constexpr int nTaskPerNode = 16;
+constexpr int nNode = 16;
 
 int main() {
   auto user = getenv("USER");
@@ -54,12 +54,13 @@ int main() {
       job << "#SBATCH --nodes=" << nodes << "\n";
       job << "#SBATCH --tasks-per-node=" << tasksPerNode << "\n";
       job << "#SBATCH --cpus-per-task=1\n";
-      job << "#SBATCH --time=00:10:00\n";
+      job << "#SBATCH --time=00:20:00\n";
       job << "#SBATCH --mem=8GB\n";
-      if (np > 1)
-        job << "#SBATCH --partition=c26\n";
-      else
-        job << "#SBATCH --partition=c18_25\n";
+      job << "#SBATCH --partition=c01_17\n";
+      //if (np > 1)
+      //  job << "#SBATCH --partition=c26\n";
+      //else
+      //  job << "#SBATCH --partition=c18_25\n";
       job << "#SBATCH --output=" << name << ".out\n";
       //job << "#SBATCH --error=" << name << ".err\n";
       for (auto sign = 0; sign < 2; ++sign) {
