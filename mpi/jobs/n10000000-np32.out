@@ -3,7 +3,7 @@ vvvvvvvvvvvvvvvv /scratch/zl2972/n10000000-np32-fftw-s0.dat vvvvvvvvvvvvvvvv
 [Root] Start loading data...
 [Root] FFT starts
 [Root] FFT Ends
-[Root] Time: 0.708750 s
+[Root] Time: 0.419885 s
 [Root] Start saving data...
 [Root] All done
 ^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000000-np32-fftw-s0.dat ^^^^^^^^^^^^^^^^
@@ -13,20 +13,20 @@ vvvvvvvvvvvvvvvv /scratch/zl2972/n10000000-np32-mpih-s0.dat vvvvvvvvvvvvvvvv
 [Root] Start loading data...
 [Root] FFT starts
 [Root] FFT Ends
-[Root] Time: 0.428955 s
+[Root] Time: 0.541580 s
 [Root] Start saving data...
 [Root] All done
 ^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000000-np32-mpih-s0.dat ^^^^^^^^^^^^^^^^
 
 ======== CMP /scratch/zl2972/n10000000-np32-fftw-s0.dat /scratch/zl2972/n10000000-np32-mpih-s0.dat ========
-Error: 0.00198995
+Error: 0.00184861
 
 vvvvvvvvvvvvvvvv /scratch/zl2972/n10000000-np32-fftw-s1.dat vvvvvvvvvvvvvvvv
 [Root] Start planning...
 [Root] Start loading data...
 [Root] FFT starts
 [Root] FFT Ends
-[Root] Time: 0.777900 s
+[Root] Time: 0.476026 s
 [Root] Start saving data...
 [Root] All done
 ^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000000-np32-fftw-s1.dat ^^^^^^^^^^^^^^^^
@@ -36,11 +36,11 @@ vvvvvvvvvvvvvvvv /scratch/zl2972/n10000000-np32-mpih-s1.dat vvvvvvvvvvvvvvvv
 [Root] Start loading data...
 [Root] FFT starts
 [Root] FFT Ends
-[Root] Time: 0.441680 s
+[Root] Time: 0.583111 s
 [Root] Start saving data...
 [Root] All done
 ^^^^^^^^^^^^^^^^ /scratch/zl2972/n10000000-np32-mpih-s1.dat ^^^^^^^^^^^^^^^^
 
 ======== CMP /scratch/zl2972/n10000000-np32-fftw-s1.dat /scratch/zl2972/n10000000-np32-mpih-s1.dat ========
-Error: 1.92248e-10
+Error: 2.07195e-10
 

@@ -4,9 +4,9 @@
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=8
 #SBATCH --cpus-per-task=1
-#SBATCH --time=00:10:00
+#SBATCH --time=00:20:00
 #SBATCH --mem=8GB
-#SBATCH --partition=c26
+#SBATCH --partition=c01_17
 #SBATCH --output=n10000000-np8.out
 
 module purge
