@@ -1,0 +1,72 @@
+Test data length 10
+Blustein cuda Run time: 4.47091e-05
+Bechmark run time: 3.8804e-05
+Error: 3.55271e-14
+
+Test data length 100
+Blustein cuda Run time: 6.27071e-05
+Bechmark run time: 3.9703e-05
+Error: 3.99787e-12
+
+Test data length 1000
+Blustein cuda Run time: 0.000132366
+Bechmark run time: 4.26222e-05
+Error: 2.22221e-10
+
+Test data length 10000
+Blustein cuda Run time: 0.000185672
+Bechmark run time: 5.58749e-05
+Error: 1.04905e-08
+
+Test data length 100000
+Blustein cuda Run time: 0.000510272
+Bechmark run time: 6.84361e-05
+Error: 7.01132e-07
+
+Test data length 1000000
+Blustein cuda Run time: 0.00467353
+Bechmark run time: 0.000186017
+Error: 1.23291e-05
+
+Test data length 10000000
+Blustein cuda Run time: 0.0828217
+Bechmark run time: 0.001549
+Error: 0.000324096
+
+Testing prime numbers
+
+Test data length 11
+Blustein cuda Run time: 5.065e-05
+Bechmark run time: 3.82692e-05
+Error: 4.77969e-14
+
+Test data length 101
+Blustein cuda Run time: 6.2403e-05
+Bechmark run time: 4.36681e-05
+Error: 4.4003e-12
+
+Test data length 1009
+Blustein cuda Run time: 0.000132988
+Bechmark run time: 4.37319e-05
+Error: 2.96635e-10
+
+Test data length 10007
+Blustein cuda Run time: 0.000183463
+Bechmark run time: 8.1091e-05
+Error: 9.56129e-09
+
+Test data length 100003
+Blustein cuda Run time: 0.000509972
+Bechmark run time: 0.000129869
+Error: 5.74034e-07
+
+Test data length 1000003
+Blustein cuda Run time: 0.00467496
+Bechmark run time: 0.000806402
+Error: 1.15247e-05
+
+Test data length 10000019
+Blustein cuda Run time: 0.0827514
+Bechmark run time: 0.00804092
+Error: 0.000645072
+

@@ -74,7 +74,7 @@ struct DitFFT {
           auto u = Y[j + k];
           auto v = conj(W[k * g]) * Y[j + k + h];
           Y[j + k] = u + v;
-          Y[j + k + h] = u - v;;
+          Y[j + k + h] = u - v;
         }
     }
   }
@@ -297,10 +297,12 @@ struct BluesteinFFT {
     for (size_t i = 0; i < N; ++i)
       A[i] = X[i] * conj(C[i]);
     fill(A.begin() + (ptrdiff_t) N, A.end(), Comp{});
+    
     difdit.dft(A.data());
     for (size_t i = 0; i < difdit.N; ++i)
       A[i] *= B[i];
     difdit.idft(A.data());
+    
     for (size_t i = 0; i < N; ++i)
       Y[i] = A[i] * conj(C[i]);
   }
