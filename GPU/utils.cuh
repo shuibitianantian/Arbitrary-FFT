@@ -29,31 +29,38 @@ uint32_t __inline __builtin_ctzll(uint32_t value ){
 #endif
 // =====================================================
 
-// Self defined atomicAdd
-__device__ double atomicAdd2(double* address, double val){
-    unsigned long long int* address_as_ull =
-            (unsigned long long int*)address;
-    unsigned long long int old = *address_as_ull, assumed;
-
-    do {
-        assumed = old;
-        old = atomicCAS(address_as_ull, assumed,
-                        __double_as_longlong(val + __longlong_as_double(assumed)));
-
-        // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
-    } while (assumed != old);
-
-    return __longlong_as_double(old);
+template<class I>
+constexpr I ceil2(I x) {
+    --x;
+    x |= x >> 1;
+    x |= x >> 2;
+    x |= x >> 4;
+    if (sizeof(I) > 1)
+        x |= x >> 8;
+    if (sizeof(I) > 2)
+        x |= x >> 16;
+    if (sizeof(I) > 4)
+        x |= x >> 32;
+    return x + 1;
 }
 
-void cuComp_to_Comp(cuDoubleComplex* cucp, Comp* cp, std::size_t N){
-    for(int i = 0; i < N; ++i){
-        cp[i] = Comp(cuCreal(cucp[i]), cuCimag(cucp[i]));
-    }
-  }
-  
-  void Comp_to_cuComp(const Comp* cp, cuDoubleComplex* cucp, std::size_t N){
-    for(int i = 0; i < N; ++i){
-        cucp[i] = make_cuDoubleComplex(cp[i].real(), cp[i].imag());
-    }
-  }
+template<class I>
+constexpr bool isPow2(I x) { return ((x ^ (x - 1)) >> 1) == x - 1; }
+
+Real error(const Comp* A, const Comp* B, std::size_t N) {
+    using namespace std;
+    Real res = 0;
+    for (size_t i = 0; i < N; ++i)
+        res = max(res, abs(A[i] - B[i]));
+    return res;
+}
+
+std::mt19937_64 R(std::random_device{}());
+
+Real randReal(Real lo, Real up) {
+    return std::uniform_real_distribution<Real>(lo, up)(R);
+}
+
+Comp randComp(Real lo, Real up) {
+    return {randReal(lo, up), randReal(lo, up)};
+}

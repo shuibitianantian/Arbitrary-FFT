@@ -16,103 +16,7 @@
 #include <cuda_runtime.h>
 #include <cufft.h>
 
-// Helper functions for CUDA
-#include "device_launch_parameters.h"
-
-struct NaiveDFT_cuda {
-    static constexpr char Name[] = "NaiveDFT_cuda";
-    const std::size_t N;
-
-    NaiveDFT_cuda(std::size_t N) : N(N) {}
-
-    ~NaiveDFT_cuda(){cudaDeviceReset();}
-
-    void dft(Comp* Y, const Comp* X){
-      using namespace std;
-
-      size_t xblock = std::sqrt(BLOCKSIZE); // currently support 2^n
-      dim3 dimBlock(xblock, xblock); // define the size of block
-      
-      size_t xgrid = (N + dimBlock.x - 1) / dimBlock.x;
-      size_t ygrid = (N + dimBlock.y - 1) / dimBlock.y;
-      dim3 dimGrid(xgrid, ygrid); 
-
-      // initialize host and device of X
-      cuDoubleComplex* h_X = (cuDoubleComplex*) malloc(N*sizeof(cuDoubleComplex));  // allocate memory to host
-      Comp_to_cuComp(X, h_X, N);  // convert Comp to cuda complex
-      cuDoubleComplex* d_X;
-      cudaMalloc(&d_X, N*sizeof(cuDoubleComplex));
-      cudaMemcpy(d_X, h_X, N*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
-
-      // initialize host and device of Y
-      cuDoubleComplex* h_Y = (cuDoubleComplex*) malloc(N*ygrid*sizeof(cuDoubleComplex));
-      cuDoubleComplex* d_Y;
-      cudaMalloc(&d_Y, N*ygrid*sizeof(cuDoubleComplex));
-      for(int i = 0; i < N*ygrid; ++i)
-        h_Y[i] = make_cuDoubleComplex(0.0, 0.0);
-      cudaMemcpy(d_Y, h_Y, N*ygrid*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
-      cudaDeviceSynchronize();
-
-      double tt = omp_get_wtime();
-      dft_kernel2d<<<dimGrid, dimBlock>>>(d_X, d_Y, N, ygrid);
-      Check_CUDA_Error("Error");
-      reduction_2d<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE>>>(d_Y, N, ygrid);
-      Check_CUDA_Error("Error");
-      cudaDeviceSynchronize();
-      cudaMemcpy(h_Y, d_Y, N*ygrid*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
-
-      for(int i = 0; i < N; ++i)
-        Y[i] = Comp(cuCreal(h_Y[i*ygrid]), cuCimag(h_Y[i*ygrid]));
-
-        // cout << "[" << Name  << "] (dft) run time: " <<  omp_get_wtime() - tt << endl;
-      free(h_Y);
-      free(h_X);
-    }
-
-    void idft(Comp* Y, const Comp* X) {
-      using namespace std;
-
-      size_t xblock = std::sqrt(BLOCKSIZE); // currently support 2^n
-      dim3 dimBlock(xblock, xblock); // define the size of block
-      
-      size_t xgrid = (N + dimBlock.x - 1) / dimBlock.x;
-      size_t ygrid = (N + dimBlock.y - 1) / dimBlock.y;
-      dim3 dimGrid(xgrid, ygrid); 
-
-      // initialize host and device of X
-      cuDoubleComplex* h_X = (cuDoubleComplex*) malloc(N*sizeof(cuDoubleComplex));  // allocate memory to host
-      Comp_to_cuComp(X, h_X, N);  // convert Comp to cuda complex
-      cuDoubleComplex* d_X;
-      cudaMalloc(&d_X, N*sizeof(cuDoubleComplex));
-      cudaMemcpy(d_X, h_X, N*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
-
-      // initialize host and device of Y
-      cuDoubleComplex* h_Y = (cuDoubleComplex*) malloc(N*ygrid*sizeof(cuDoubleComplex));
-      cuDoubleComplex* d_Y;
-      cudaMalloc(&d_Y, N*ygrid*sizeof(cuDoubleComplex));
-      for(int i = 0; i < N*ygrid; ++i)
-        h_Y[i] = make_cuDoubleComplex(0.0, 0.0);
-      cudaMemcpy(d_Y, h_Y, N*ygrid*sizeof(cuDoubleComplex), cudaMemcpyHostToDevice);
-      cudaDeviceSynchronize();
-
-      double tt = omp_get_wtime();
-      idft_kernel2d<<<dimGrid, dimBlock>>>(d_X, d_Y, N, ygrid);
-      Check_CUDA_Error("Error");
-      reduction_2d<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE>>>(d_Y, N, ygrid);
-      Check_CUDA_Error("Error");
-      cudaDeviceSynchronize();
-      cudaMemcpy(h_Y, d_Y, N*ygrid*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
-  
-      for(int i = 0; i < N; ++i)
-        Y[i] = Comp(cuCreal(h_Y[i*ygrid]) / N, cuCimag(h_Y[i*ygrid]) / N);
-    cout << "[" << Name  << "] (idft) run time: " <<  omp_get_wtime() - tt << endl;
-
-      free(h_Y);
-      free(h_X);
-    }
-};
-
-// Decimation in Time FFT
+// Decimation in Time FFT cuda version, used to perform dft of bluestein's algorithm
 // Performs bit-reverse-copy before transform
 // N must be power of 2
 struct DitFFT_cuda {
@@ -151,7 +55,6 @@ struct DitFFT_cuda {
 
         cudaMemcpy(d_I, I, N*sizeof(size_t), cudaMemcpyHostToDevice);
 
-        // cudaMemcpy(W, cuda_W, N*sizeof(size_t), cudaMemcpyDeviceToHost);
         for (size_t i = 0; i < N; ++i)
             W[i] = exp(Comp(0, w * (Real) i));
     }
@@ -205,8 +108,7 @@ struct DitFFT_cuda {
     }
 };
 
-
-// Forward transform uses DIF while inverse transform uses DIT
+// Forward transform uses DIF while inverse transform uses DIT, used to perform idft of bluestein's algorithm
 // For convolution use, no bit-reverse-copy performed, performed in-place
 // N must be power of 2
 struct DifDitFFT_cuda {
@@ -249,8 +151,6 @@ struct DifDitFFT_cuda {
         }
 
         cudaMemcpy(Y, d_Y, N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
-        Check_CUDA_Error("395");
-        // cout << "[" << Name  << "] (dft) run time: " <<  omp_get_wtime() - tt << endl;
     }
 
     void idft(Comp* Y) {
@@ -267,28 +167,9 @@ struct DifDitFFT_cuda {
         }
         complex_div_real<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE>>>(d_Y, N);
         cudaMemcpy(Y, d_Y, N*sizeof(cuDoubleComplex), cudaMemcpyDeviceToHost);
-        Check_CUDA_Error("406");
-        // cout << "[" << Name  << "] (idft) run time: " <<  omp_get_wtime() - tt << endl;
     }
 };
 
-template<class I>
-constexpr I ceil2(I x) {
-    --x;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    if (sizeof(I) > 1)
-        x |= x >> 8;
-    if (sizeof(I) > 2)
-        x |= x >> 16;
-    if (sizeof(I) > 4)
-        x |= x >> 32;
-    return x + 1;
-}
-
-template<class I>
-constexpr bool isPow2(I x) { return ((x ^ (x - 1)) >> 1) == x - 1; }
 
 // cuda bluesteinFFT
 struct BluesteinFFT_cuda {
@@ -432,28 +313,17 @@ struct BluesteinFFT_cuda {
     }
 };
 
-Real error(const Comp* A, const Comp* B, std::size_t N) {
-    using namespace std;
-    Real res = 0;
-    for (size_t i = 0; i < N; ++i)
-        res = max(res, abs(A[i] - B[i]));
-    return res;
-}
-
-std::mt19937_64 R(std::random_device{}());
-
-Real randReal(Real lo, Real up) {
-    return std::uniform_real_distribution<Real>(lo, up)(R);
-}
-
-Comp randComp(Real lo, Real up) {
-    return {randReal(lo, up), randReal(lo, up)};
-}
-
+/*
+    Function to run fft and report the time
+    
+    Params:
+    ~ std::size_t sign: 1 represents forward dft, 0 represents inverse dft (idft)
+    ~ std::size_t N: size of input data
+    ~ Comp* input: input data
+*/
 void fft_cuda(std::size_t sign, std::size_t N, Comp* input, Comp* output){
     using namespace std;
     BluesteinFFT_cuda bluestein_cuda(N);
-
 
     if(sign == 1){
         bluestein_cuda.dft(output, input);
@@ -463,14 +333,14 @@ void fft_cuda(std::size_t sign, std::size_t N, Comp* input, Comp* output){
     cout << "Blustein cuda Run time: " << bluestein_cuda.run_time << endl;
 }
 
-void print_vector(Comp* x, int N){
-    for(int i = 0; i < N; ++i)
-        std::cout << x[i] << std::endl;
-    std::cout << std::endl;
-}
-
-void benchmark(Comp* Data, int LENGTH){
+/*
+    Function to run benchmark (cufft)
     
+    Params:
+    ~ Comp* Data: input data
+    ~ int LENGTH: length of input data
+*/
+void benchmark(Comp* Data, int LENGTH){
     cufftDoubleComplex* CompData = (cufftDoubleComplex*) malloc(LENGTH*sizeof(cufftDoubleComplex));
     for(int i = 0; i < LENGTH; ++i){
         CompData[i].x = real(Data[i]);
@@ -501,31 +371,3 @@ void benchmark(Comp* Data, int LENGTH){
     free(CompData);
     
 }
-
-
-int main(int argc, char* argv[]){
-    using namespace std;
-    int N = atoi(argv[1]);
-    
-    Comp* input = (Comp*) malloc(N*sizeof(Comp));
-    Comp* output = (Comp*) malloc(N*sizeof(Comp));
-    Comp* original = (Comp*) malloc(N*sizeof(Comp));
-
-    for(int i = 0; i < N; ++i)
-        original[i] = input[i] = randComp(-10, 10);
-
-    NaiveDFT_cuda naive_cuda(N);
-    fft_cuda(1, N, input, output);
-    
-    benchmark(input, N);
-    cout << "Error: " << error(output, input, N) << endl;
-
-    free(input);
-    free(output);
-    free(original);
-
-    return 0;
-}
-
-
-

@@ -8,6 +8,9 @@ __device__ cuDoubleComplex cuda_complex_exp (cuDoubleComplex arg){
     return make_cuDoubleComplex(c * e, s * e);
 }
 
+/*
+  Following kernels are used for NaiveDFT cuda
+*/
 // check if there is an error happened in gpu
 void Check_CUDA_Error(const char *message){
     cudaError_t error = cudaGetLastError();
@@ -86,7 +89,12 @@ __global__ void reduction_2d(cuDoubleComplex* Y, std::size_t N, std::size_t col_
     Y[idx*col_size] = tmp;
   }
 }
+/* ======================================================================================================= */
 
+
+/*
+  Following kernels are used to fft
+*/
 // kernel for initialize w in ditfft algorithm
 __global__ void init_w_kernel(cuDoubleComplex* W, const double w, std::size_t N){
   std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
@@ -214,8 +222,6 @@ __global__ void complex_mul_kernel(cuDoubleComplex* A, cuDoubleComplex* X, cuDou
 
 }
 
-
-
 __global__ void complex_self_mul_kernel(cuDoubleComplex* A, cuDoubleComplex* B, std::size_t N){
   std::size_t idx = threadIdx.x + blockIdx.x*blockDim.x;
 
@@ -266,4 +272,21 @@ __global__ void complex_div_real_mul_conj(cuDoubleComplex* A, cuDoubleComplex* Y
   if(idx < Nl){
     Y[idx] = cuCmul(A[idx], cuConj(C[idx]));
   }
+}
+
+// Self defined atomicAdd
+__device__ double atomicAdd2(double* address, double val){
+  unsigned long long int* address_as_ull =
+          (unsigned long long int*)address;
+  unsigned long long int old = *address_as_ull, assumed;
+
+  do {
+      assumed = old;
+      old = atomicCAS(address_as_ull, assumed,
+                      __double_as_longlong(val + __longlong_as_double(assumed)));
+
+      // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+  } while (assumed != old);
+
+  return __longlong_as_double(old);
 }
