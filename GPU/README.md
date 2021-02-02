@@ -34,4 +34,4 @@ Parallel FFT using CUDA
 
 2. You can compile `test.cu` and run it. If you do not want to ouput the running time, just modified the code of `fft_gpu::fft_cuda`.
 
-3. Current implementation can not deal with data length more than 1e7
+3. Current implementation can not deal with data length larger than 1e7
